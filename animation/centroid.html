@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Centroid Concurrency: Medians and Midsegments</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 15px rgba(0,0,0,0.1); text-align: center; max-width: 850px; position: relative; }
+        canvas { border: 1px solid #ccc; background: #fff; cursor: crosshair; touch-action: none; margin: 15px 0; border-radius: 4px; }
+        
+        .controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+        button { padding: 8px 12px; cursor: pointer; border: none; border-radius: 4px; background: #007bff; color: white; transition: 0.2s; font-size: 13px; font-weight: 600; }
+        button:hover { background: #0056b3; }
+        button.active { background: #28a745; }
+        button#btnDE.active, button#btnDF.active { background: #9b59b6; } /* Midsegment color */
+        button#btnExplain { background: #34495e; margin-top: 5px; }
+
+        /* Modal Styling */
+        .modal-overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; 
+            border-radius: 8px; z-index: 100;
+        }
+        .modal-content { 
+            background: white; padding: 25px; border-radius: 8px; max-width: 80%; text-align: left; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3); position: relative; line-height: 1.6;
+        }
+        .close-btn { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #999; }
+        .step { margin-bottom: 12px; border-left: 3px solid #007bff; padding-left: 10px; }
+        .info-box { font-size: 0.9em; color: #444; text-align: left; background: #eef2f7; padding: 15px; border-radius: 4px; border-left: 5px solid #007bff; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Geometric Proof: Median Concurrency</h2>
+    <p>Drag vertices to see how midsegments (purple) remain parallel to the base.</p>
+    
+    <div class="controls">
+        <button id="btnM1" onclick="toggleMedian(0)">1. Median AD</button>
+        <button id="btnM2" onclick="toggleMedian(1)">2. Median BE</button>
+        <button id="btnDE" onclick="toggleDE()">Midsegment DE</button>
+        <button id="btnDF" onclick="toggleDF()">Midsegment DF</button>
+        <button id="btnRatio" onclick="toggleRatio()">Show Ratio on AD</button>
+        <button id="btnM3" onclick="toggleMedian(2)">3. Median CF</button>
+        <button id="btnExplain" onclick="toggleModal(true)">🎓 Explain Method 1</button>
+    </div>
+
+    <canvas id="canvas" width="600" height="400"></canvas>
+
+    <div class="info-box">
+        <strong>Midsegment Property:</strong> Use <strong>DE</strong> to prove similarity between △GDE and △GAB. Use <strong>DF</strong> to show that the same logic applies to other pairs of medians!
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-content">
+            <span class="close-btn" onclick="toggleModal(false)">&times;</span>
+            <h3>The Midsegment Similarity Proof</h3>
+            <div class="step"><strong>1. Construction:</strong> Draw medians AD and BE intersecting at G. Draw midsegment DE.</div>
+            <div class="step"><strong>2. Midsegment Theorem:</strong> Segment DE is parallel to AB and exactly 1/2 of its length.</div>
+            <div class="step"><strong>3. Similarity:</strong> By AA Similarity (Alternate Interior Angles), △GDE ~ △GAB.</div>
+            <div class="step"><strong>4. The Ratio:</strong> Since the triangle sides are in a 1:2 ratio, <strong>GD is 1/2 of AG</strong>. This means G is 2/3 of the way down median AD.</div>
+            <div class="step"><strong>5. Concurrency:</strong> Since any pair of medians will intersect at this same 2/3 point on AD, they must all pass through G.</div>
+            <button onclick="toggleModal(false)" style="width:100%; margin-top:10px; background:#007bff; color:white; border:none; padding:10px; border-radius:4px; cursor:pointer;">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const modal = document.getElementById('modalOverlay');
+
+let points = [{x: 300, y: 50, label: 'A'}, {x: 100, y: 350, label: 'B'}, {x: 500, y: 350, label: 'C'}];
+let showMedians = [false, false, false], showRatio = false, showDE = false, showDF = false, dragged = null;
+
+function toggleMedian(i) {
+    showMedians[i] = !showMedians[i];
+    document.getElementById('btnM' + (i+1)).classList.toggle('active');
+    draw();
+}
+function toggleRatio() {
+    showRatio = !showRatio;
+    document.getElementById('btnRatio').classList.toggle('active');
+    draw();
+}
+function toggleDE() {
+    showDE = !showDE;
+    document.getElementById('btnDE').classList.toggle('active');
+    draw();
+}
+function toggleDF() {
+    showDF = !showDF;
+    document.getElementById('btnDF').classList.toggle('active');
+    draw();
+}
+function toggleModal(show) { modal.style.display = show ? 'flex' : 'none'; }
+
+function getMid(p1, p2) { return {x: (p1.x+p2.x)/2, y: (p1.y+p2.y)/2}; }
+
+function drawTicks(p1, p2, count) {
+    const mid = getMid(p1, p2);
+    const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.sqrt(dx*dx + dy*dy);
+    if (len === 0) return;
+    const ux = dx/len, uy = dy/len, px = -uy, py = ux;
+    let sx = px + ux * 0.5, sy = py + uy * 0.5;
+    const sLen = Math.sqrt(sx*sx + sy*sy);
+    sx /= sLen; sy /= sLen;
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < count; i++) {
+        const offset = (i - (count - 1) / 2) * 6;
+        const cx = mid.x + ux * offset, cy = mid.y + uy * offset;
+        ctx.beginPath();
+        ctx.moveTo(cx - sx * 7, cy - sy * 7); ctx.lineTo(cx + sx * 7, cy + sy * 7);
+        ctx.stroke();
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const [A, B, C] = points;
+    const D = getMid(B, C), E = getMid(A, C), F = getMid(A, B);
+    const G = {x: (A.x+B.x+C.x)/3, y: (A.y+B.y+C.y)/3};
+
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.lineTo(C.x, C.y); ctx.closePath();
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.stroke();
+
+    if (showDE) {
+        ctx.beginPath(); ctx.moveTo(D.x, D.y); ctx.lineTo(E.x, E.y);
+        ctx.strokeStyle = '#9b59b6'; ctx.lineWidth = 3; ctx.stroke();
+    }
+    if (showDF) {
+        ctx.beginPath(); ctx.moveTo(D.x, D.y); ctx.lineTo(F.x, F.y);
+        ctx.strokeStyle = '#9b59b6'; ctx.lineWidth = 3; ctx.stroke();
+    }
+
+    if(showMedians[0]) { drawSegment(A, D, '#e74c3c'); drawTicks(B, D, 1); drawTicks(D, C, 1); }
+    if(showMedians[1]) { drawSegment(B, E, '#3498db'); drawTicks(A, E, 2); drawTicks(E, C, 2); }
+    if(showMedians[2]) { drawSegment(C, F, '#f1c40f'); drawTicks(A, F, 3); drawTicks(F, B, 3); }
+
+    if (showMedians.filter(v => v).length >= 2) {
+        ctx.fillStyle = 'black'; ctx.beginPath(); ctx.arc(G.x, G.y, 5, 0, Math.PI*2); ctx.fill();
+        ctx.font = "bold 14px Arial"; ctx.fillText("G", G.x + 10, G.y - 10);
+    }
+
+    if (showRatio && showMedians[0]) {
+        ctx.font = "bold 16px Arial"; ctx.fillStyle = '#e74c3c';
+        ctx.fillText("2x", (A.x + G.x)/2 + 15, (A.y + G.y)/2);
+        ctx.fillText("1x", (D.x + G.x)/2 + 15, (D.y + G.y)/2);
+    }
+
+    points.forEach(p => {
+        ctx.fillStyle = '#007bff'; ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'black'; ctx.font = "bold 14px Arial"; ctx.fillText(p.label, p.x - 5, p.y - 15);
+    });
+
+    if(showMedians[0] || showDE || showDF) drawText("D", D, '#333', 20);
+    if(showMedians[1] || showDE) drawText("E", E, '#333', 20);
+    if(showMedians[2] || showDF) drawText("F", F, '#333', 20);
+}
+
+function drawSegment(p1, p2, color) {
+    ctx.beginPath(); ctx.setLineDash([5, 5]);
+    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+}
+
+function drawText(txt, p, color, offset=0) {
+    ctx.fillStyle = color; ctx.fillText(txt, p.x + offset, p.y + offset);
+}
+
+canvas.onmousedown = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    points.forEach(p => { if (Math.hypot(p.x - mx, p.y - my) < 20) dragged = p; });
+};
+window.onmousemove = (e) => {
+    if (dragged) {
+        const rect = canvas.getBoundingClientRect();
+        dragged.x = e.clientX - rect.left; dragged.y = e.clientY - rect.top;
+        draw();
+    }
+};
+window.onmouseup = () => dragged = null;
+
+draw();
+</script>
+</body>
+</html>
